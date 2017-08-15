@@ -4,8 +4,29 @@ namespace UniversalTypes
 {
     public static class DoubleExtensions
     {
+        public static bool IsIntegral(this double d)
+        {
+            if (double.IsNaN(d) || double.IsInfinity(d))
+            {
+                return false;
+            }
+            return (d % 1).IsNearlyZero();
+        }
+
         public static bool IsNearlyEqual(this double d, double value)
         {
+            if (double.IsNaN(d))
+            {
+                return double.IsNaN(value);
+            }
+            if (double.IsPositiveInfinity(d))
+            {
+                return double.IsPositiveInfinity(value);
+            }
+            if (double.IsNegativeInfinity(d))
+            {
+                return double.IsNegativeInfinity(value);
+            }
             if (d == value)
             {
                 return true;
@@ -28,6 +49,10 @@ namespace UniversalTypes
 
         public static bool IsNearlyZero(this double d)
         {
+            if (double.IsNaN(d) || double.IsInfinity(d))
+            {
+                return false;
+            }
             if (d == 0)
             {
                 return true;

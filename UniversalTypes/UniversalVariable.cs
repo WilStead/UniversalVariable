@@ -8,32 +8,35 @@ using System.Text;
 namespace UniversalTypes
 {
 #pragma warning disable IDE1006
-    public class let : IComparable
+    public class let : IEquatable<let>, IComparable
 #pragma warning restore IDE1006
     {
-        private enum InternalType { None, Array, Boolean, Number, String }
+        internal enum InternalType { None, Array, Boolean, Number, String }
 
-        /// <summary>
-        /// An empty variable.
-        /// </summary>
-        public static let Empty = new let();
-
-        private List<let> _array = new List<let>();
-        private bool _boolean;
-        private Dictionary<string, let> _children = new Dictionary<string, let>();
-        private double _number = double.NaN;
-        private string _string;
-        private InternalType _type = InternalType.None;
+        internal List<let> _array = new List<let>();
+        internal bool _boolean;
+        internal Dictionary<string, let> _children = new Dictionary<string, let>();
+        internal double _number = double.NaN;
+        internal string _string;
+        internal InternalType _type = InternalType.None;
 
         public let this[int index]
         {
             get
             {
+                if (index < 0)
+                {
+                    return new let();
+                }
                 PadRight(index + 1);
                 return _array[index];
             }
             set
             {
+                if (index < 0)
+                {
+                    return;
+                }
                 PadRight(index + 1);
                 _array[index] = value;
             }
@@ -67,6 +70,10 @@ namespace UniversalTypes
         {
             get
             {
+                if (int.TryParse(index, out var intIndex))
+                {
+                    return this[intIndex];
+                }
                 if (_children.TryGetValue(index, out var value))
                 {
                     return value;
@@ -79,7 +86,17 @@ namespace UniversalTypes
                 }
             }
 
-            set => _children[index] = value;
+            set
+            {
+                if (int.TryParse(index, out var intIndex))
+                {
+                    this[intIndex] = value;
+                }
+                else
+                {
+                    _children[index] = value;
+                }
+            }
         }
 
         /// <summary>
@@ -95,6 +112,18 @@ namespace UniversalTypes
         public int PropertyCount => _children.Count;
 
         /// <summary>
+        /// Gets this variable's value as an object. Child properties are not represented. To get an
+        /// object which contains all child properties (but not the value), use <see cref="ToDynamic"/>.
+        /// </summary>
+        public object Value
+        {
+            get => ToObject();
+            set => SetValue(value);
+        }
+
+        #region Constructors
+
+        /// <summary>
         /// Initializes a new instance of <see cref="let"/>.
         /// </summary>
         public let() { }
@@ -102,21 +131,7 @@ namespace UniversalTypes
         /// <summary>
         /// Initializes a new instance of <see cref="let"/> as a deep copy of the given variable.
         /// </summary>
-        public let(let other)
-        {
-            _type = other._type;
-            _boolean = other._boolean;
-            _number = other._number;
-            _string = other._string;
-            foreach (var item in other._array)
-            {
-                _array.Add(item.DeepClone());
-            }
-            foreach (var item in other._children)
-            {
-                _children.Add(item.Key, item.Value.DeepClone());
-            }
-        }
+        public let(let other) => Copy(other);
 
         /// <summary>
         /// Initializes a new instance of <see cref="let"/> as an array with the given values.
@@ -125,6 +140,24 @@ namespace UniversalTypes
         {
             _type = InternalType.Array;
             _array.AddRange(collection);
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="let"/> with the given values as children.
+        /// </summary>
+        public let(IDictionary<string, object> collection)
+        {
+            foreach (var item in collection)
+            {
+                if (item.Key == "Value")
+                {
+                    SetValue(item.Value);
+                }
+                else
+                {
+                    _children.Add(item.Key, new let(item.Value));
+                }
+            }
         }
 
         /// <summary>
@@ -193,32 +226,7 @@ namespace UniversalTypes
         /// <summary>
         /// Initializes a new instance of <see cref="let"/> with the given value.
         /// </summary>
-        public let(object value)
-        {
-            if (value.GetType() == typeof(bool))
-            {
-                _type = InternalType.Boolean;
-                _boolean = (bool)value;
-            }
-            else if (value.GetType() == typeof(string))
-            {
-                _type = InternalType.String;
-                _string = (string)value;
-            }
-            else if (value.GetType().IsNumericType())
-            {
-                _type = InternalType.String;
-                _number = (double)value;
-            }
-            else if (value is IEnumerable)
-            {
-                _type = InternalType.Array;
-                foreach (var item in (value as IEnumerable))
-                {
-                    _array.Add(new let(item));
-                }
-            }
-        }
+        public let(object value) => SetValue(value);
 
         /// <summary>
         /// Initializes a new instance of <see cref="let"/> as an array with the given collection.
@@ -229,6 +237,67 @@ namespace UniversalTypes
             foreach (var item in collection)
             {
                 _array.Add(new let(item));
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="let"/> with the given children.
+        /// </summary>
+        public let(object[][] collection)
+        {
+            foreach (var item in collection)
+            {
+                if (item.Length == 0)
+                {
+                    continue;
+                }
+                else
+                {
+                    if (item[0].ToString() == "Value")
+                    {
+                        if (item.Length > 1)
+                        {
+                            SetValue(item[1]);
+                        }
+                    }
+                    else if (item.Length == 1)
+                    {
+                        _children.Add(item[0].ToString(), new let());
+                    }
+                    else
+                    {
+                        _children.Add(item[0].ToString(), new let(item[1]));
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="let"/> with the given children.
+        /// </summary>
+        public let(object[,] collection)
+        {
+            if (collection.GetLength(1) == 0)
+            {
+                return;
+            }
+            for (int i = 0; i < collection.GetLength(0); i++)
+            {
+                if (collection.GetLength(1) == 1)
+                {
+                    if (collection[i, 0].ToString() != "Value")
+                    {
+                        _children.Add(collection[i, 0].ToString(), new let());
+                    }
+                }
+                else if (collection[i, 0].ToString() == "Value")
+                {
+                    SetValue(collection[i, 1]);
+                }
+                else
+                {
+                    _children.Add(collection[i, 0].ToString(), new let(collection[i, 1]));
+                }
             }
         }
 
@@ -286,18 +355,26 @@ namespace UniversalTypes
             _number = value;
         }
 
-        public static let operator +(let a) => a;
+        #endregion Constructors
+
+        #region Operators
+
+        public static let operator +(let a) => a ?? new let();
 
         public static let operator -(let a)
         {
+            if (a == null)
+            {
+                return new let(true);
+            }
             var result = a.ShallowCopy();
             switch (a._type)
             {
                 case InternalType.Boolean:
-                    result._boolean = !result._boolean;
+                    result._boolean = !a._boolean;
                     break;
                 case InternalType.Number:
-                    result._number = -result._number;
+                    result._number = -a._number;
                     break;
                 case InternalType.Array:
                 case InternalType.String:
@@ -311,14 +388,18 @@ namespace UniversalTypes
 
         public static let operator !(let a)
         {
+            if (a == null)
+            {
+                return new let(true);
+            }
             var result = a.ShallowCopy();
             switch (a._type)
             {
                 case InternalType.Boolean:
-                    result._boolean = !result._boolean;
+                    result._boolean = !a._boolean;
                     break;
                 case InternalType.Number:
-                    result._number = -result._number;
+                    result._number = -a._number;
                     break;
                 case InternalType.Array:
                 case InternalType.String:
@@ -332,20 +413,24 @@ namespace UniversalTypes
 
         public static let operator ~(let a)
         {
+            if (a == null)
+            {
+                return new let();
+            }
             var result = a.ShallowCopy();
             switch (a._type)
             {
                 case InternalType.Array:
                     break;
                 case InternalType.Boolean:
-                    result._boolean = !result._boolean;
+                    result._boolean = !a._boolean;
                     break;
                 case InternalType.Number:
-                    if ((result._number % 1).IsNearlyZero()
-                        && Math.Abs(result._number) < ulong.MaxValue)
+                    if ((a._number % 1).IsNearlyZero()
+                        && Math.Abs(a._number) < ulong.MaxValue)
                     {
-                        var sign = Math.Sign(result._number);
-                        var ul = Convert.ToUInt64(Math.Abs(result._number));
+                        var sign = Math.Sign(a._number);
+                        var ul = Convert.ToUInt64(Math.Abs(a._number));
                         result._number = sign * (double)~ul;
                     }
                     break;
@@ -368,77 +453,103 @@ namespace UniversalTypes
 
         public static let operator ++(let a)
         {
+            if (a == null)
+            {
+                return new let(1);
+            }
+            var result = a.ShallowCopy();
             switch (a._type)
             {
+                case InternalType.None:
+                    result._type = InternalType.Number;
+                    result._number = 1;
+                    break;
                 case InternalType.Array:
-                    a._array.Add(new let());
+                    result._array.Add(new let());
                     break;
                 case InternalType.Boolean:
-                    a._boolean = !a._boolean;
+                    result._boolean = !a._boolean;
                     break;
                 case InternalType.Number:
-                    a._number++;
+                    result._number++;
                     break;
                 case InternalType.String:
                     if (double.TryParse(a._string, out var value))
                     {
-                        a._type = InternalType.Number;
-                        a._number = ++value;
+                        result._type = InternalType.Number;
+                        result._number = ++value;
                     }
                     else if (bool.TryParse(a._string, out var bValue))
                     {
-                        a._type = InternalType.Boolean;
-                        a._boolean = !bValue;
+                        result._type = InternalType.Boolean;
+                        result._boolean = !bValue;
                     }
                     else
                     {
-                        a._string += " ";
+                        result._string += " ";
                     }
                     break;
                 default:
                     break;
             }
-            return a;
+            return result;
         }
 
         public static let operator --(let a)
         {
+            if (a == null)
+            {
+                return new let(-1);
+            }
+            var result = a.ShallowCopy();
             switch (a._type)
             {
+                case InternalType.None:
+                    result._type = InternalType.Number;
+                    result._number = -1;
+                    break;
                 case InternalType.Array:
-                    a._array.RemoveAt(a._array.Count - 1);
+                    result._array.RemoveAt(a._array.Count - 1);
                     break;
                 case InternalType.Boolean:
-                    a._boolean = !a._boolean;
+                    result._boolean = !a._boolean;
                     break;
                 case InternalType.Number:
-                    a._number--;
+                    result._number--;
                     break;
                 case InternalType.String:
                     if (double.TryParse(a._string, out var value))
                     {
-                        a._type = InternalType.Number;
-                        a._number = --value;
+                        result._type = InternalType.Number;
+                        result._number = --value;
                     }
                     else if (bool.TryParse(a._string, out var bValue))
                     {
-                        a._type = InternalType.Boolean;
-                        a._boolean = !bValue;
+                        result._type = InternalType.Boolean;
+                        result._boolean = !bValue;
                     }
                     else
                     {
-                        a._string = a._string.Substring(0, a._string.Length - 1);
+                        result._string = a._string.Substring(0, a._string.Length - 1);
                     }
                     break;
                 default:
                     break;
             }
-            return a;
+            return result;
         }
 
         public static let operator +(let a, let b)
         {
+            if (a == null)
+            {
+                return b?.ShallowCopy() ?? new let();
+            }
             var result = a.ShallowCopy();
+            if (b == null)
+            {
+                return result;
+            }
             if (a._type == InternalType.Array)
             {
                 if (b._type == InternalType.Array)
@@ -452,8 +563,12 @@ namespace UniversalTypes
             }
             else if (b._type == InternalType.Array)
             {
-                result = b.ShallowCopy();
-                result.Insert(0, a);
+                result._type = InternalType.Array;
+                result._array.AddRange(b._array);
+                if (a._type != InternalType.None)
+                {
+                    result.Insert(0, a);
+                }
             }
             else
             {
@@ -463,11 +578,11 @@ namespace UniversalTypes
                         switch (b._type)
                         {
                             case InternalType.Boolean:
-                                result._boolean &= b._boolean;
+                                result._boolean |= b._boolean;
                                 break;
                             case InternalType.Number:
                                 result._type = InternalType.Number;
-                                result._number = (result._boolean ? 1 : 0) + b._number;
+                                result._number = (a._boolean ? 1 : 0) + b._number;
                                 break;
                             case InternalType.String:
                                 if (bool.TryParse(b._string, out var bValue))
@@ -477,12 +592,12 @@ namespace UniversalTypes
                                 else if (double.TryParse(b._string, out var value))
                                 {
                                     result._type = InternalType.Number;
-                                    result._number = (result._boolean ? 1 : 0) + value;
+                                    result._number = (a._boolean ? 1 : 0) + value;
                                 }
                                 else
                                 {
                                     result._type = InternalType.String;
-                                    result._string = result._boolean.ToString() + b._string;
+                                    result._string = a._boolean.ToString() + b._string;
                                 }
                                 break;
                             default:
@@ -510,7 +625,7 @@ namespace UniversalTypes
                                 else
                                 {
                                     result._type = InternalType.String;
-                                    result._string = result._number.ToString() + b._string;
+                                    result._string = a._number.ToString() + b._string;
                                 }
                                 break;
                             default:
@@ -521,12 +636,12 @@ namespace UniversalTypes
                         switch (b._type)
                         {
                             case InternalType.Boolean:
-                                if (bool.TryParse(result._string, out var bValue))
+                                if (bool.TryParse(a._string, out var bValue))
                                 {
                                     result._type = InternalType.Boolean;
-                                    result._boolean = bValue && b._boolean;
+                                    result._boolean = bValue || b._boolean;
                                 }
-                                else if (double.TryParse(result._string, out var nValue))
+                                else if (double.TryParse(a._string, out var nValue))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = nValue + (b._boolean ? 1 : 0);
@@ -537,12 +652,12 @@ namespace UniversalTypes
                                 }
                                 break;
                             case InternalType.Number:
-                                if (double.TryParse(result._string, out var nValue2))
+                                if (double.TryParse(a._string, out var nValue2))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = nValue2 + b._number;
                                 }
-                                else if (bool.TryParse(result._string, out var bValue2))
+                                else if (bool.TryParse(a._string, out var bValue2))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = (bValue2 ? 1 : 0) + b._number;
@@ -553,7 +668,7 @@ namespace UniversalTypes
                                 }
                                 break;
                             case InternalType.String:
-                                if (double.TryParse(result._string, out var value1))
+                                if (double.TryParse(a._string, out var value1))
                                 {
                                     if (double.TryParse(b._string, out var value2))
                                     {
@@ -570,12 +685,12 @@ namespace UniversalTypes
                                         result._string += b._string;
                                     }
                                 }
-                                else if (bool.TryParse(result._string, out var bValue3))
+                                else if (bool.TryParse(a._string, out var bValue3))
                                 {
                                     if (bool.TryParse(b._string, out var bValue4))
                                     {
                                         result._type = InternalType.Boolean;
-                                        result._boolean = bValue3 && bValue4;
+                                        result._boolean = bValue3 || bValue4;
                                     }
                                     else if (double.TryParse(b._string, out var value))
                                     {
@@ -597,7 +712,8 @@ namespace UniversalTypes
                         }
                         break;
                     default:
-                        return b.DeepClone();
+                        result.CopyValue(b);
+                        break;
                 }
             }
             return result;
@@ -605,7 +721,15 @@ namespace UniversalTypes
 
         public static let operator -(let a, let b)
         {
+            if (a == null)
+            {
+                return b == null ? new let() : -b;
+            }
             var result = a.ShallowCopy();
+            if (b == null)
+            {
+                return result;
+            }
             switch (a._type)
             {
                 case InternalType.Array:
@@ -629,7 +753,7 @@ namespace UniversalTypes
                             break;
                         case InternalType.Number:
                             result._type = InternalType.Number;
-                            result._number = (result._boolean ? 1 : 0) - b._number;
+                            result._number = (a._boolean ? 1 : 0) - b._number;
                             break;
                         case InternalType.String:
                             if (bool.TryParse(b._string, out var bValue))
@@ -639,12 +763,12 @@ namespace UniversalTypes
                             else if (double.TryParse(b._string, out var value))
                             {
                                 result._type = InternalType.Number;
-                                result._number = (result._boolean ? 1 : 0) - value;
+                                result._number = (a._boolean ? 1 : 0) - value;
                             }
                             else
                             {
                                 result._type = InternalType.String;
-                                result._string = result._boolean.ToString().Replace(b._string, string.Empty);
+                                result._string = a._boolean.ToString().Replace(b._string, string.Empty);
                             }
                             break;
                         default:
@@ -674,8 +798,20 @@ namespace UniversalTypes
                             }
                             else
                             {
-                                result._type = InternalType.String;
-                                result._string = result._number.ToString().Replace(b._string, string.Empty);
+                                var oStr = a._number.ToString();
+                                var nStr = oStr.Replace(b._string, string.Empty);
+                                if (nStr != oStr)
+                                {
+                                    if (double.TryParse(nStr, out var nVal))
+                                    {
+                                        result._number = nVal;
+                                    }
+                                    else
+                                    {
+                                        result._type = InternalType.String;
+                                        result._string = nStr;
+                                    }
+                                }
                             }
                             break;
                         default:
@@ -692,39 +828,39 @@ namespace UniversalTypes
                             }
                             break;
                         case InternalType.Boolean:
-                            if (bool.TryParse(result._string, out var bValue))
+                            if (bool.TryParse(a._string, out var bValue))
                             {
                                 result._type = InternalType.Boolean;
                                 result._boolean = bValue && !b._boolean;
                             }
-                            else if (double.TryParse(result._string, out var nValue))
+                            else if (double.TryParse(a._string, out var nValue))
                             {
                                 result._type = InternalType.Number;
                                 result._number = nValue - (b._boolean ? 1 : 0);
                             }
                             else
                             {
-                                result._string = result._string.Replace(b._boolean.ToString(), string.Empty);
+                                result._string = a._string.Replace(b._boolean.ToString(), string.Empty);
                             }
                             break;
                         case InternalType.Number:
-                            if (double.TryParse(result._string, out var nValue2))
+                            if (double.TryParse(a._string, out var nValue2))
                             {
                                 result._type = InternalType.Number;
                                 result._number = nValue2 - b._number;
                             }
-                            else if (bool.TryParse(result._string, out var bValue2))
+                            else if (bool.TryParse(a._string, out var bValue2))
                             {
                                 result._type = InternalType.Number;
                                 result._number = (bValue2 ? 1 : 0) - b._number;
                             }
                             else
                             {
-                                result._string = result._string.Replace(b._number.ToString(), string.Empty);
+                                result._string = a._string.Replace(b._number.ToString(), string.Empty);
                             }
                             break;
                         case InternalType.String:
-                            if (double.TryParse(result._string, out var value1))
+                            if (double.TryParse(a._string, out var value1))
                             {
                                 if (double.TryParse(b._string, out var value2))
                                 {
@@ -738,10 +874,10 @@ namespace UniversalTypes
                                 }
                                 else
                                 {
-                                    result._string = result._string.Replace(b._string, string.Empty);
+                                    result._string = a._string.Replace(b._string, string.Empty);
                                 }
                             }
-                            else if (bool.TryParse(result._string, out var bValue3))
+                            else if (bool.TryParse(a._string, out var bValue3))
                             {
                                 if (bool.TryParse(b._string, out var bValue4))
                                 {
@@ -755,12 +891,12 @@ namespace UniversalTypes
                                 }
                                 else
                                 {
-                                    result._string = result._string.Replace(b._string, string.Empty);
+                                    result._string = a._string.Replace(b._string, string.Empty);
                                 }
                             }
                             else
                             {
-                                result._string = result._string.Replace(b._string, string.Empty);
+                                result._string = a._string.Replace(b._string, string.Empty);
                             }
                             break;
                         default:
@@ -768,14 +904,25 @@ namespace UniversalTypes
                     }
                     break;
                 default:
-                    return -b.DeepClone();
+                    result.CopyValue(-b);
+                    break;
             }
             return result;
         }
 
         public static let operator *(let a, let b)
         {
+            if (a == null)
+            {
+                return new let();
+            }
             var result = a.ShallowCopy();
+            if (b == null)
+            {
+                result._type = InternalType.None;
+                result._children.Clear();
+                return result;
+            }
             if (a._type == InternalType.Array)
             {
                 if (b._type == InternalType.Array)
@@ -784,18 +931,19 @@ namespace UniversalTypes
                 }
                 else
                 {
-                    for (int i = 0; i < result._array.Count; i++)
+                    for (int i = 0; i < a._array.Count; i++)
                     {
-                        result._array[i] = result._array[i] * b;
+                        result._array[i] = a._array[i] * b;
                     }
                 }
             }
             else if (b._type == InternalType.Array)
             {
-                result = b.ShallowCopy();
-                for (int i = 0; i < result._array.Count; i++)
+                result._type = InternalType.Array;
+                result._array.AddRange(b._array);
+                for (int i = 0; i < b._array.Count; i++)
                 {
-                    result._array[i] = a * result._array[i];
+                    result._array[i] = a * b._array[i];
                 }
             }
             else
@@ -806,26 +954,26 @@ namespace UniversalTypes
                         switch (b._type)
                         {
                             case InternalType.Boolean:
-                                result._boolean = result._boolean == b._boolean;
+                                result._boolean = a._boolean == b._boolean;
                                 break;
                             case InternalType.Number:
                                 result._type = InternalType.Number;
-                                result._number = (result._boolean ? 1 : 0) * b._number;
+                                result._number = (a._boolean ? 1 : 0) * b._number;
                                 break;
                             case InternalType.String:
                                 if (bool.TryParse(b._string, out var bValue))
                                 {
-                                    result._boolean = result._boolean == bValue;
+                                    result._boolean = a._boolean == bValue;
                                 }
                                 else if (double.TryParse(b._string, out var value))
                                 {
                                     result._type = InternalType.Number;
-                                    result._number = (result._boolean ? 1 : 0) * value;
+                                    result._number = (a._boolean ? 1 : 0) * value;
                                 }
                                 else
                                 {
                                     result._type = InternalType.String;
-                                    result._string = result._boolean ? b._string : string.Empty;
+                                    result._string = a._boolean ? b._string : string.Empty;
                                 }
                                 break;
                             default:
@@ -854,7 +1002,7 @@ namespace UniversalTypes
                                 {
                                     result._type = InternalType.String;
                                     var sb = new StringBuilder();
-                                    for (int i = 0; i < result._number; i++)
+                                    for (int i = 0; i < a._number; i++)
                                     {
                                         sb.Append(b._string);
                                     }
@@ -869,28 +1017,28 @@ namespace UniversalTypes
                         switch (b._type)
                         {
                             case InternalType.Boolean:
-                                if (bool.TryParse(result._string, out var bValue))
+                                if (bool.TryParse(a._string, out var bValue))
                                 {
                                     result._type = InternalType.Boolean;
                                     result._boolean = bValue == b._boolean;
                                 }
-                                else if (double.TryParse(result._string, out var nValue))
+                                else if (double.TryParse(a._string, out var nValue))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = nValue * (b._boolean ? 1 : 0);
                                 }
                                 else
                                 {
-                                    result._string = b._boolean ? result._string : string.Empty;
+                                    result._string = b._boolean ? a._string : string.Empty;
                                 }
                                 break;
                             case InternalType.Number:
-                                if (double.TryParse(result._string, out var nValue2))
+                                if (double.TryParse(a._string, out var nValue2))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = nValue2 * b._number;
                                 }
-                                else if (bool.TryParse(result._string, out var bValue2))
+                                else if (bool.TryParse(a._string, out var bValue2))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = (bValue2 ? 1 : 0) * b._number;
@@ -900,13 +1048,13 @@ namespace UniversalTypes
                                     var sb = new StringBuilder();
                                     for (int i = 0; i < b._number; i++)
                                     {
-                                        sb.Append(result._string);
+                                        sb.Append(a._string);
                                     }
                                     result._string = sb.ToString();
                                 }
                                 break;
                             case InternalType.String:
-                                if (double.TryParse(result._string, out var value1))
+                                if (double.TryParse(a._string, out var value1))
                                 {
                                     if (double.TryParse(b._string, out var value2))
                                     {
@@ -920,10 +1068,10 @@ namespace UniversalTypes
                                     }
                                     else
                                     {
-                                        result._string = $"{result._string}*{b._string}";
+                                        result._string = $"{a._string}*{b._string}";
                                     }
                                 }
-                                else if (bool.TryParse(result._string, out var bValue3))
+                                else if (bool.TryParse(a._string, out var bValue3))
                                 {
                                     if (bool.TryParse(b._string, out var bValue4))
                                     {
@@ -937,12 +1085,12 @@ namespace UniversalTypes
                                     }
                                     else
                                     {
-                                        result._string = $"{result._string}*{b._string}";
+                                        result._string = $"{a._string}*{b._string}";
                                     }
                                 }
                                 else
                                 {
-                                    result._string = $"{result._string}*{b._string}";
+                                    result._string = $"{a._string}*{b._string}";
                                 }
                                 break;
                             default:
@@ -950,7 +1098,7 @@ namespace UniversalTypes
                         }
                         break;
                     default:
-                        return b.DeepClone();
+                        break;
                 }
             }
             return result;
@@ -958,7 +1106,17 @@ namespace UniversalTypes
 
         public static let operator /(let a, let b)
         {
+            if (a == null)
+            {
+                return new let();
+            }
             var result = a.ShallowCopy();
+            if (b == null)
+            {
+                result._type = InternalType.None;
+                result._children.Clear();
+                return result;
+            }
             if (a._type == InternalType.Array)
             {
                 if (b._type == InternalType.Array)
@@ -967,18 +1125,19 @@ namespace UniversalTypes
                 }
                 else
                 {
-                    for (int i = 0; i < result._array.Count; i++)
+                    for (int i = 0; i < a._array.Count; i++)
                     {
-                        result._array[i] = result._array[i] / b;
+                        result._array[i] = a._array[i] / b;
                     }
                 }
             }
             else if (b._type == InternalType.Array)
             {
-                result = b.ShallowCopy();
-                for (int i = 0; i < result._array.Count; i++)
+                result._type = InternalType.Array;
+                result._array.AddRange(b._array);
+                for (int i = 0; i < b._array.Count; i++)
                 {
-                    result._array[i] = a / result._array[i];
+                    result._array[i] = a / b._array[i];
                 }
             }
             else
@@ -989,11 +1148,11 @@ namespace UniversalTypes
                         switch (b._type)
                         {
                             case InternalType.Boolean:
-                                result._boolean = result._boolean == b._boolean;
+                                result._boolean = a._boolean == b._boolean;
                                 break;
                             case InternalType.Number:
                                 result._type = InternalType.Number;
-                                result._number = (result._boolean ? 1 : 0) / b._number;
+                                result._number = (a._boolean ? 1 : 0) / b._number;
                                 break;
                             case InternalType.String:
                                 if (bool.TryParse(b._string, out var bValue))
@@ -1003,12 +1162,12 @@ namespace UniversalTypes
                                 else if (double.TryParse(b._string, out var value))
                                 {
                                     result._type = InternalType.Number;
-                                    result._number = (result._boolean ? 1 : 0) / value;
+                                    result._number = (a._boolean ? 1 : 0) / value;
                                 }
                                 else
                                 {
                                     result._type = InternalType.String;
-                                    result._string = result._boolean ? b._string : string.Empty;
+                                    result._string = a._boolean ? b._string : string.Empty;
                                 }
                                 break;
                             default:
@@ -1035,7 +1194,8 @@ namespace UniversalTypes
                                 }
                                 else
                                 {
-                                    result._string = $"{result._number}/{b._string}";
+                                    result._type = InternalType.String;
+                                    result._string = $"{a._number}/{b._string}";
                                 }
                                 break;
                             default:
@@ -1046,40 +1206,47 @@ namespace UniversalTypes
                         switch (b._type)
                         {
                             case InternalType.Boolean:
-                                if (bool.TryParse(result._string, out var bValue))
+                                if (bool.TryParse(a._string, out var bValue))
                                 {
                                     result._type = InternalType.Boolean;
                                     result._boolean = bValue == b._boolean;
                                 }
-                                else if (double.TryParse(result._string, out var nValue))
+                                else if (double.TryParse(a._string, out var nValue))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = nValue / (b._boolean ? 1 : 0);
                                 }
                                 else
                                 {
-                                    result._string = b._boolean ? result._string : string.Empty;
+                                    result._string = b._boolean ? a._string : string.Empty;
                                 }
                                 break;
                             case InternalType.Number:
-                                if (double.TryParse(result._string, out var nValue2))
+                                if (double.TryParse(a._string, out var nValue2))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = nValue2 / b._number;
                                 }
-                                else if (bool.TryParse(result._string, out var bValue2))
+                                else if (bool.TryParse(a._string, out var bValue2))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = (bValue2 ? 1 : 0) / b._number;
                                 }
                                 else
                                 {
-                                    result._string = result.Substring(0,
-                                        (int)Math.Max(0, Math.Round(result._string.Length / b._number)));
+                                    if (double.IsNaN(b._number) || double.IsInfinity(b._number) || b._number == 0)
+                                    {
+                                        result._string = string.Empty;
+                                    }
+                                    else
+                                    {
+                                        result._string = result.Substring(0,
+                                            (int)Math.Max(0, Math.Round(a._string.Length / b._number)));
+                                    }
                                 }
                                 break;
                             case InternalType.String:
-                                if (double.TryParse(result._string, out var value1))
+                                if (double.TryParse(a._string, out var value1))
                                 {
                                     if (double.TryParse(b._string, out var value2))
                                     {
@@ -1093,10 +1260,10 @@ namespace UniversalTypes
                                     }
                                     else
                                     {
-                                        result._string = result._string.Replace(b._string, string.Empty);
+                                        result._string = a._string.Replace(b._string, string.Empty);
                                     }
                                 }
-                                else if (bool.TryParse(result._string, out var bValue3))
+                                else if (bool.TryParse(a._string, out var bValue3))
                                 {
                                     if (bool.TryParse(b._string, out var bValue4))
                                     {
@@ -1110,12 +1277,12 @@ namespace UniversalTypes
                                     }
                                     else
                                     {
-                                        result._string = result._string.Replace(b._string, string.Empty);
+                                        result._string = a._string.Replace(b._string, string.Empty);
                                     }
                                 }
                                 else
                                 {
-                                    result._string = result._string.Replace(b._string, string.Empty);
+                                    result._string = a._string.Replace(b._string, string.Empty);
                                 }
                                 break;
                             default:
@@ -1123,7 +1290,7 @@ namespace UniversalTypes
                         }
                         break;
                     default:
-                        return b.DeepClone();
+                        break;
                 }
             }
             return result;
@@ -1131,7 +1298,15 @@ namespace UniversalTypes
 
         public static let operator %(let a, let b)
         {
+            if (a == null)
+            {
+                return b?.ShallowCopy() ?? new let();
+            }
             var result = a.ShallowCopy();
+            if (b == null)
+            {
+                return result;
+            }
             if (a._type == InternalType.Array)
             {
                 if (b._type == InternalType.Array)
@@ -1141,18 +1316,19 @@ namespace UniversalTypes
                 }
                 else
                 {
-                    for (int i = 0; i < result._array.Count; i++)
+                    for (int i = 0; i < a._array.Count; i++)
                     {
-                        result._array[i] = result._array[i] % b;
+                        result._array[i] = a._array[i] % b;
                     }
                 }
             }
             else if (b._type == InternalType.Array)
             {
-                result = b.ShallowCopy();
-                for (int i = 0; i < result._array.Count; i++)
+                result._type = InternalType.Array;
+                result._array.AddRange(b._array);
+                for (int i = 0; i < b._array.Count; i++)
                 {
-                    result._array[i] = a % result._array[i];
+                    result._array[i] = a % b._array[i];
                 }
             }
             else
@@ -1167,7 +1343,7 @@ namespace UniversalTypes
                                 break;
                             case InternalType.Number:
                                 result._type = InternalType.Number;
-                                result._number = (result._boolean ? 1 : 0) % b._number;
+                                result._number = (a._boolean ? 1 : 0) % b._number;
                                 break;
                             case InternalType.String:
                                 if (bool.TryParse(b._string, out var bValue))
@@ -1177,12 +1353,12 @@ namespace UniversalTypes
                                 else if (double.TryParse(b._string, out var value))
                                 {
                                     result._type = InternalType.Number;
-                                    result._number = (result._boolean ? 1 : 0) % value;
+                                    result._number = (a._boolean ? 1 : 0) % value;
                                 }
                                 else
                                 {
                                     result._type = InternalType.String;
-                                    result._string = result._boolean ? b._string : string.Empty;
+                                    result._string = a._boolean ? b._string : string.Empty;
                                 }
                                 break;
                             default:
@@ -1209,7 +1385,8 @@ namespace UniversalTypes
                                 }
                                 else
                                 {
-                                    result._string = $"{result._number}%{b._string}";
+                                    result._type = InternalType.String;
+                                    result._string = $"{a._number}%{b._string}";
                                 }
                                 break;
                             default:
@@ -1220,39 +1397,39 @@ namespace UniversalTypes
                         switch (b._type)
                         {
                             case InternalType.Boolean:
-                                if (bool.TryParse(result._string, out var bValue))
+                                if (bool.TryParse(a._string, out var bValue))
                                 {
                                     result._type = InternalType.Boolean;
                                     result._boolean = bValue ^ b._boolean;
                                 }
-                                else if (double.TryParse(result._string, out var nValue))
+                                else if (double.TryParse(a._string, out var nValue))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = nValue % (b._boolean ? 1 : 0);
                                 }
                                 else
                                 {
-                                    result._string = b._boolean ? result._string : string.Empty;
+                                    result._string = b._boolean ? a._string : string.Empty;
                                 }
                                 break;
                             case InternalType.Number:
-                                if (double.TryParse(result._string, out var nValue2))
+                                if (double.TryParse(a._string, out var nValue2))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = nValue2 % b._number;
                                 }
-                                else if (bool.TryParse(result._string, out var bValue2))
+                                else if (bool.TryParse(a._string, out var bValue2))
                                 {
                                     result._type = InternalType.Number;
                                     result._number = (bValue2 ? 1 : 0) % b._number;
                                 }
-                                else
+                                else if (!double.IsNaN(b._number) && !double.IsInfinity(b._number) && b._number != 0)
                                 {
-                                    result._string = result.Substring((int)Math.Max(0, Math.Floor(result._string.Length / b._number) * b._number));
+                                    result._string = a.Substring((int)Math.Max(0, Math.Floor(a._string.Length / b._number) * b._number));
                                 }
                                 break;
                             case InternalType.String:
-                                if (double.TryParse(result._string, out var value1))
+                                if (double.TryParse(a._string, out var value1))
                                 {
                                     if (double.TryParse(b._string, out var value2))
                                     {
@@ -1266,10 +1443,10 @@ namespace UniversalTypes
                                     }
                                     else
                                     {
-                                        result._string = result._string.Replace(b._string, string.Empty);
+                                        result._string = a._string.Replace(b._string, string.Empty);
                                     }
                                 }
-                                else if (bool.TryParse(result._string, out var bValue3))
+                                else if (bool.TryParse(a._string, out var bValue3))
                                 {
                                     if (bool.TryParse(b._string, out var bValue4))
                                     {
@@ -1283,12 +1460,12 @@ namespace UniversalTypes
                                     }
                                     else
                                     {
-                                        result._string = result._string.Replace(b._string, string.Empty);
+                                        result._string = a._string.Replace(b._string, string.Empty);
                                     }
                                 }
                                 else
                                 {
-                                    result._string = result._string.Replace(b._string, string.Empty);
+                                    result._string = a._string.Replace(b._string, string.Empty);
                                 }
                                 break;
                             default:
@@ -1296,17 +1473,284 @@ namespace UniversalTypes
                         }
                         break;
                     default:
-                        return b.DeepClone();
+                        result.CopyValue(b);
+                        break;
                 }
             }
             return result;
         }
 
-        public static bool operator &(let a, let b) => a.ToBoolean() && b.ToBoolean();
+        public static bool operator &(let a, let b) => (a?.ToBoolean() ?? false) && (b?.ToBoolean() ?? false);
 
-        public static bool operator |(let a, let b) => a.ToBoolean() || b.ToBoolean();
+        public static bool operator |(let a, let b) => (a?.ToBoolean() ?? false) || (b?.ToBoolean() ?? false);
 
-        public static bool operator ^(let a, let b) => a.ToBoolean() ^ b.ToBoolean();
+        public static bool operator ^(let a, let b) => (a?.ToBoolean() ?? false) ^ (b?.ToBoolean() ?? false);
+
+        public static let operator <<(let a, int b)
+        {
+            if (a == null)
+            {
+                return new let();
+            }
+            var result = a.ShallowCopy();
+            if (b == 0)
+            {
+                return result;
+            }
+            switch (a._type)
+            {
+                case InternalType.Array:
+                    if (a.Length > 0)
+                    {
+                        result._array.RemoveRange(0, result._array.Count - b);
+                        for (int i = 0; i < b; i++)
+                        {
+                            result._array.Add(new let());
+                        }
+                    }
+                    break;
+                case InternalType.Boolean:
+                    if (b % 2 != 0)
+                    {
+                        result._boolean = !a._boolean;
+                    }
+                    break;
+                case InternalType.Number:
+                    if (a._number.IsIntegral())
+                    {
+                        if (a._number <= int.MaxValue)
+                        {
+                            var v = Convert.ToInt32(a._number);
+                            result._number = v << b;
+                        }
+                        else if (a._number <= long.MaxValue)
+                        {
+                            var v = Convert.ToInt64(a._number);
+                            result._number = v << b;
+                        }
+                        else if (a._number > 0 && a._number <= ulong.MaxValue)
+                        {
+                            var v = Convert.ToUInt64(a._number);
+                            result._number = v << b;
+                        }
+                    }
+                    break;
+                case InternalType.String:
+                    if (double.TryParse(a._string, out var value))
+                    {
+                        if (value <= int.MaxValue)
+                        {
+                            result._type = InternalType.Number;
+                            var v = Convert.ToInt32(value);
+                            result._number = v << b;
+                        }
+                        else if (value <= long.MaxValue)
+                        {
+                            result._type = InternalType.Number;
+                            var v = Convert.ToInt64(value);
+                            result._number = v << b;
+                        }
+                        else if (value > 0 && a._number <= ulong.MaxValue)
+                        {
+                            result._type = InternalType.Number;
+                            var v = Convert.ToUInt64(value);
+                            result._number = v << b;
+                        }
+                    }
+                    else if (bool.TryParse(a._string, out var bValue))
+                    {
+                        result._type = InternalType.Boolean;
+                        result._boolean = b % 2 == 0 ? bValue : !bValue;
+                    }
+                    if (result._type == InternalType.String)
+                    {
+                        var sb = new StringBuilder();
+                        if (a._string.Length > b)
+                        {
+                            sb.Append(a._string.Substring(b));
+                        }
+                        for (int i = 0; i < b; i++)
+                        {
+                            sb.Append(" ");
+                        }
+                        result._string = sb.ToString();
+                    }
+                    break;
+                default:
+                    break;
+            }
+            return result;
+        }
+
+        public static let operator >>(let a, int b)
+        {
+            if (a == null)
+            {
+                return new let();
+            }
+            var result = a.ShallowCopy();
+            if (b == 0)
+            {
+                return result;
+            }
+            switch (a._type)
+            {
+                case InternalType.Array:
+                    if (a.Length > 0)
+                    {
+                        for (int i = 0; i < b; i++)
+                        {
+                            result._array.Insert(0, new let());
+                        }
+                        result.RemoveAll(result._array.Count - b);
+                    }
+                    break;
+                case InternalType.Boolean:
+                    if (b % 2 != 0)
+                    {
+                        result._boolean = !a._boolean;
+                    }
+                    break;
+                case InternalType.Number:
+                    if (a._number.IsIntegral())
+                    {
+                        if (a._number <= int.MaxValue)
+                        {
+                            var v = Convert.ToInt32(a._number);
+                            result._number = v >> b;
+                        }
+                        else if (a._number <= long.MaxValue)
+                        {
+                            var v = Convert.ToInt64(a._number);
+                            result._number = v >> b;
+                        }
+                        else if (a._number > 0 && a._number <= ulong.MaxValue)
+                        {
+                            var v = Convert.ToUInt64(a._number);
+                            result._number = v >> b;
+                        }
+                    }
+                    break;
+                case InternalType.String:
+                    if (double.TryParse(a._string, out var value))
+                    {
+                        if (value <= int.MaxValue)
+                        {
+                            result._type = InternalType.Number;
+                            var v = Convert.ToInt32(value);
+                            result._number = v >> b;
+                        }
+                        else if (value <= long.MaxValue)
+                        {
+                            result._type = InternalType.Number;
+                            var v = Convert.ToInt64(value);
+                            result._number = v >> b;
+                        }
+                        else if (value > 0 && a._number <= ulong.MaxValue)
+                        {
+                            result._type = InternalType.Number;
+                            var v = Convert.ToUInt64(value);
+                            result._number = v >> b;
+                        }
+                    }
+                    else if (bool.TryParse(a._string, out var bValue))
+                    {
+                        result._type = InternalType.Boolean;
+                        result._boolean = b % 2 == 0 ? bValue : !bValue;
+                    }
+                    if (result._type == InternalType.String)
+                    {
+                        var sb = new StringBuilder();
+                        for (int i = 0; i < b; i++)
+                        {
+                            sb.Append(" ");
+                        }
+                        if (a._string.Length > b)
+                        {
+                            sb.Append(a._string.Substring(0, a._string.Length - b));
+                        }
+                        result._string = sb.ToString();
+                    }
+                    break;
+                default:
+                    break;
+            }
+            return result;
+        }
+
+        public static bool operator ==(let a, object b)
+        {
+            if (ReferenceEquals(a, null))
+            {
+                return ReferenceEquals(b, null)
+                    || (b.GetType() == typeof(let) && (b as let).Equals(null));
+            }
+            return a.Equals(b);
+        }
+
+        public static bool operator !=(let a, object b)
+        {
+            if (ReferenceEquals(a, null))
+            {
+                return !ReferenceEquals(b, null)
+                    && (b.GetType() != typeof(let) || !(b as let).Equals(null));
+            }
+            return !a.Equals(b);
+        }
+
+        public static bool operator <(let a, let b)
+        {
+            if (b == null)
+            {
+                return false;
+            }
+            if (a == null)
+            {
+                return true;
+            }
+            return a.CompareTo(b) < 0;
+        }
+
+        public static bool operator >(let a, let b)
+        {
+            if (b == null)
+            {
+                return true;
+            }
+            if (a == null)
+            {
+                return false;
+            }
+            return a.CompareTo(b) > 0;
+        }
+
+        public static bool operator <=(let a, let b)
+        {
+            if (b == null)
+            {
+                return a == null;
+            }
+            if (a == null)
+            {
+                return true;
+            }
+            return a.CompareTo(b) <= 0;
+        }
+
+        public static bool operator >=(let a, let b)
+        {
+            if (b == null)
+            {
+                return true;
+            }
+            if (a == null)
+            {
+                return false;
+            }
+            return a.CompareTo(b) >= 0;
+        }
+
+        #region Conversions
 
         public static implicit operator bool(let v) => v.ToBoolean();
 
@@ -1353,6 +1797,8 @@ namespace UniversalTypes
         }
 
         public static implicit operator decimal[] (let v) => v.DeepClone().ConvertToArray()._array.Select(i => (decimal)i).ToArray();
+
+        public static implicit operator Dictionary<string, object>(let v) => v.ToDictionary();
 
         public static implicit operator double(let v) => v.ToDouble();
 
@@ -1405,6 +1851,24 @@ namespace UniversalTypes
             };
             arr._array.AddRange(v.Select(i => new let(i)));
             return arr;
+        }
+
+        public static implicit operator let(Dictionary<string, object> v)
+        {
+            let newV;
+            if (v.TryGetValue("Value", out var value))
+            {
+                newV = new let(value);
+            }
+            else
+            {
+                newV = new let();
+            }
+            foreach (var item in v.Where(i => i.Key != "Value"))
+            {
+                newV._children.Add(item.Key, new let(item.Value));
+            }
+            return newV;
         }
 
         public static implicit operator let(decimal v) => new let(v);
@@ -1468,6 +1932,10 @@ namespace UniversalTypes
         }
 
         public static implicit operator let(object[] v) => new let(v);
+
+        public static implicit operator let(object[][] v) => new let(v);
+
+        public static implicit operator let(object[,] v) => new let(v);
 
         public static implicit operator let(sbyte v) => new let(v);
 
@@ -1563,6 +2031,39 @@ namespace UniversalTypes
         public static implicit operator long[] (let v) => v.DeepClone().ConvertToArray()._array.Select(i => (long)i).ToArray();
 
         public static implicit operator object[] (let v) => v.ToArray();
+
+        public static implicit operator object[][] (let v)
+        {
+            var obj = new List<object[]>
+            {
+                new object[] { "Value", v.ToObject() }
+            };
+            foreach (var item in v._children)
+            {
+                obj.Add(new object[] { item.Key, item.Value.ToObject() });
+            }
+            return obj.ToArray();
+        }
+
+        public static implicit operator object[,] (let v)
+        {
+            var obj = new List<object[]>
+            {
+                new object[] { "Value", v.ToObject() }
+            };
+            foreach (var item in v._children)
+            {
+                obj.Add(new object[] { item.Key, item.Value.ToObject() });
+            }
+            var jagged = obj.ToArray();
+            object[,] result = new object[jagged.Length, 2];
+            for (int i = 0; i < jagged.Length; i++)
+            {
+                result[i, 0] = jagged[i][0];
+                result[i, 1] = jagged[i][1];
+            }
+            return result;
+        }
 
         public static implicit operator sbyte(let v)
         {
@@ -1673,6 +2174,10 @@ namespace UniversalTypes
 
         public static implicit operator ushort[] (let v) => v.DeepClone().ConvertToArray()._array.Select(i => (ushort)i).ToArray();
 
+        #endregion Conversions
+
+        #endregion Operators
+
         /// <summary>
         /// Adds an item to the end of an array; the variable becomes an array if it wasn't already,
         /// with the first element equal to its former value.
@@ -1705,14 +2210,16 @@ namespace UniversalTypes
         /// <summary>
         /// Adds the elements of the specified collection to the end of an array; the variable becomes an array if it wasn't already, with the first element equal to its former value.
         /// </summary>
-        /// <param name="item">An item to add.</param>
-        public void AddRange(IEnumerable<let> collection)
+        public void AddRange(IEnumerable collection)
         {
             if (_type != InternalType.Array)
             {
                 ConvertToArray();
             }
-            _array.AddRange(collection);
+            foreach (var item in collection)
+            {
+                _array.Add(item.GetType() == typeof(let) ? item as let : new let(item));
+            }
         }
 
         /// <summary>
@@ -1745,19 +2252,15 @@ namespace UniversalTypes
             {
                 other = new let(obj);
             }
-            switch (other._type)
+            if (_type == InternalType.None)
             {
-                case InternalType.Array:
-                    return ToDouble().CompareTo(other.Length);
-                case InternalType.Boolean:
-                    return ToDouble().CompareTo(other.ToDouble());
-                case InternalType.Number:
-                    return _number.CompareTo(other._number);
-                case InternalType.String:
-                    return ToString().CompareTo(other._string);
-                default:
-                    return _type == InternalType.None ? 0 : 1;
+                return other._type == InternalType.None ? 0 : -1;
             }
+            if (other._type == InternalType.None)
+            {
+                return 1;
+            }
+            return ToDouble().CompareTo(other.ToDouble());
         }
 
         /// <summary>
@@ -1768,23 +2271,20 @@ namespace UniversalTypes
         /// <returns>true if the item is present; false otherwise.</returns>
         public bool Contains(let item)
         {
-            switch (_type)
+            if (_type == InternalType.Array)
+            {
+                return _array.Contains(item);
+            }
+            var str = ToString();
+            switch (item._type)
             {
                 case InternalType.Array:
-                    return _array.Contains(item);
+                    return item._array.Any(i => str.Contains(i.ToString()));
+                case InternalType.Boolean:
+                    return str.ToLower().Contains(item.ToString().ToLower());
+                case InternalType.Number:
                 case InternalType.String:
-                    switch (item._type)
-                    {
-                        case InternalType.Array:
-                            return item._array.Any(i => _string.Contains(i.ToString()));
-                        case InternalType.Boolean:
-                            return _string.ToLower().Contains(item.ToString().ToLower());
-                        case InternalType.Number:
-                        case InternalType.String:
-                            return _string.Contains(item.ToString());
-                        default:
-                            return false;
-                    };
+                    return str.Contains(item.ToString());
                 default:
                     return false;
             }
@@ -1804,6 +2304,10 @@ namespace UniversalTypes
 
         private let ConvertToArray()
         {
+            if (_type == InternalType.Array)
+            {
+                return this;
+            }
             _array.Clear();
             switch (_type)
             {
@@ -1823,6 +2327,20 @@ namespace UniversalTypes
             return this;
         }
 
+        private void Copy(let other)
+        {
+            CopyValue(other);
+            _array.Clear();
+            foreach (var item in other._array)
+            {
+                _array.Add(item.DeepClone());
+            }
+            foreach (var item in other._children)
+            {
+                _children.Add(item.Key, item.Value.DeepClone());
+            }
+        }
+
         /// <summary>
         /// Copies the elements of an array to the destination array, starting at the specified
         /// index; fills the destination array with other types.
@@ -1831,24 +2349,39 @@ namespace UniversalTypes
         /// <param name="index">The starting index of the destination array.</param>
         public void CopyTo(let array, int index = 0)
         {
-            var targetLength = _type == InternalType.Array ? _array.Count + index : 1;
+            var targetLength = _type == InternalType.Array
+                ? _array.Count + index
+                : (array._type == InternalType.Array ? array.Length - index : index + 1);
             if (targetLength < 0)
             {
                 return;
             }
-            array._type = InternalType.Array;
-            array.PadRight(targetLength);
+            if (index == 0 && _type != InternalType.Array && array._type != InternalType.Array)
+            {
+                array.Copy(this);
+                return;
+            }
+            array.ConvertToArray();
             for (int i = Math.Max(0, index); i < targetLength; i++)
             {
                 if (_type == InternalType.Array)
                 {
-                    array[i] = this[i].DeepClone();
+                    array[i] = this[i - index].DeepClone();
                 }
                 else
                 {
                     array[i] = DeepClone();
                 }
             }
+        }
+
+        private void CopyValue(let other)
+        {
+            _type = other._type;
+            _boolean = other._boolean;
+            _number = other._number;
+            _string = other._string;
+            _array.AddRange(other._array);
         }
 
         /// <summary>
@@ -1875,24 +2408,21 @@ namespace UniversalTypes
         }
 
         /// <summary>
-        /// Determines whether this variable and an object are equal.
+        /// Determines whether this variable and another are equal.
         /// </summary>
-        public override bool Equals(object obj)
+        public bool Equals(let other)
         {
-            if (obj == null)
-            {
-                return false;
-            }
-            var other = new let(obj);
             if (_type != other._type
-                || _boolean != other._boolean
-                || !_array.SequenceEqual(other._array)
                 || !_children.SequenceEqual(other._children))
             {
                 return false;
             }
             switch (_type)
             {
+                case InternalType.Array:
+                    return _array.SequenceEqual(other._array);
+                case InternalType.Boolean:
+                    return _boolean == other._boolean;
                 case InternalType.Number:
                     if (double.IsNaN(other._number))
                     {
@@ -1907,6 +2437,20 @@ namespace UniversalTypes
                 default:
                     return true;
             }
+        }
+
+        /// <summary>
+        /// Determines whether this variable and an object are equal.
+        /// </summary>
+        public override bool Equals(object obj)
+        {
+            if (obj == null)
+            {
+                return _type == InternalType.None && _children.Count == 0;
+            }
+            var isLet = obj.GetType() == typeof(let);
+            var other = isLet ? obj as let : ShallowCopy().SetValue(obj);
+            return Equals(other);
         }
 
         /// <summary>
@@ -1936,15 +2480,18 @@ namespace UniversalTypes
         /// predicate; for non-arrays, returns a list containing the item if it matches, or an empty
         /// list otherwise.
         /// </summary>
-        public List<let> FindAll(Predicate<let> match)
+        public let FindAll(Predicate<let> match)
         {
             if (match == null)
             {
-                return new List<let>();
+                return new let
+                {
+                    _type = InternalType.Array
+                };
             }
             if (_type == InternalType.Array)
             {
-                return _array.FindAll(match);
+                return new let(_array.FindAll(match));
             }
             else
             {
@@ -1953,7 +2500,7 @@ namespace UniversalTypes
                 {
                     list.Add(this);
                 }
-                return list;
+                return new let(list);
             }
         }
 
@@ -2157,9 +2704,29 @@ namespace UniversalTypes
         }
 
         /// <summary>
-        /// A hash function.
+        /// A hash function. WARNING: hash code will change when properties are changed, making this
+        /// class unsafe for use in hash tables or as dictionary keys. However, this allows LINQ
+        /// functions and other native code to detect equality correctly without the use of a
+        /// separate <see cref="IEqualityComparer{T}"/> instance.
         /// </summary>
-        public override int GetHashCode() => base.GetHashCode();
+        public override int GetHashCode()
+        {
+            int hash = 17;
+            hash = hash * 23 + _type.GetHashCode();
+            hash = hash * 23 + _boolean.GetHashCode();
+            hash = hash * 23 + _number.GetHashCode();
+            hash = hash * 23 + (_string?.GetHashCode() ?? 0);
+            foreach (var item in _array)
+            {
+                hash = hash * 23 + item.GetHashCode();
+            }
+            foreach (var item in _children)
+            {
+                hash = hash * 23 + item.Key.GetHashCode();
+                hash = hash * 23 + item.Value.GetHashCode();
+            }
+            return hash;
+        }
 
         /// <summary>
         /// Creates a shallow copy of a range of elements in a source array; or gets a substring; for
@@ -2598,6 +3165,34 @@ namespace UniversalTypes
             }
         }
 
+        private let SetValue(object value)
+        {
+            if (value.GetType() == typeof(bool))
+            {
+                _type = InternalType.Boolean;
+                _boolean = (bool)value;
+            }
+            else if (value.GetType() == typeof(string))
+            {
+                _type = InternalType.String;
+                _string = (string)value;
+            }
+            else if (value.GetType().IsNumericType())
+            {
+                _type = InternalType.Number;
+                _number = Convert.ToDouble(value);
+            }
+            else if (value is IEnumerable)
+            {
+                _type = InternalType.Array;
+                foreach (var child in (value as IEnumerable))
+                {
+                    _array.Add(new let(child));
+                }
+            }
+            return this;
+        }
+
         /// <summary>
         /// Retrieves a shallow copy of the current object.
         /// </summary>
@@ -2610,7 +3205,7 @@ namespace UniversalTypes
                 _number = _number,
                 _string = _string
             };
-            _array.AddRange(_array);
+            newItem._array.AddRange(_array);
             foreach (var item in _children)
             {
                 newItem._children.Add(item.Key, item.Value);
@@ -2687,7 +3282,7 @@ namespace UniversalTypes
                 case InternalType.Array:
                     if (options == StringSplitOptions.RemoveEmptyEntries)
                     {
-                        return _array.Where(i => i != Empty).ToArray();
+                        return _array.Where(i => i != null).ToArray();
                     }
                     else
                     {
@@ -2696,7 +3291,7 @@ namespace UniversalTypes
                 case InternalType.String:
                     return _string.Split(separator, options).Select(i => new let(i)).ToArray();
                 default:
-                    if (options == StringSplitOptions.RemoveEmptyEntries && Equals(Empty))
+                    if (options == StringSplitOptions.RemoveEmptyEntries && Equals(null))
                     {
                         return new let[0];
                     }
@@ -2721,7 +3316,7 @@ namespace UniversalTypes
                 case InternalType.Array:
                     if (options == StringSplitOptions.RemoveEmptyEntries)
                     {
-                        return _array.Where(i => i != Empty).Take(count).ToArray();
+                        return _array.Where(i => i != null).Take(count).ToArray();
                     }
                     else
                     {
@@ -2730,7 +3325,7 @@ namespace UniversalTypes
                 case InternalType.String:
                     return _string.Split(separator, count, options).Select(i => new let(i)).ToArray();
                 default:
-                    if (options == StringSplitOptions.RemoveEmptyEntries && Equals(Empty))
+                    if (options == StringSplitOptions.RemoveEmptyEntries && Equals(null))
                     {
                         return new let[0];
                     }
@@ -2823,7 +3418,26 @@ namespace UniversalTypes
         }
 
         /// <summary>
-        /// Gets this variable as a double. Arrays and strings return their length.
+        /// Gets this variable's child properties as a dictionary. The value of the variable is
+        /// represented under the "Value" key. To get an object which represents the value (but
+        /// does not contain the child properties), use <see cref="ToObject"/>.
+        /// </summary>
+        public Dictionary<string, object> ToDictionary()
+        {
+            var d = new Dictionary<string, object>
+            {
+                { "Value", ToObject() }
+            };
+            foreach (var item in _children)
+            {
+                d.Add(item.Key, item.Value.ToObject());
+            }
+            return d;
+        }
+
+        /// <summary>
+        /// Gets this variable as a double. Arrays return their length, as do strings which are not
+        /// convertible to numbers or booleans.
         /// </summary>
         public double ToDouble()
         {
@@ -2836,6 +3450,14 @@ namespace UniversalTypes
                 case InternalType.Number:
                     return _number;
                 case InternalType.String:
+                    if (double.TryParse(_string, out var value))
+                    {
+                        return value;
+                    }
+                    else if (bool.TryParse(_string, out var bValue))
+                    {
+                        return Convert.ToDouble(bValue);
+                    }
                     return string.IsNullOrEmpty(_string) ? 0 : _string.Length;
                 default:
                     return double.NaN;
@@ -2843,12 +3465,16 @@ namespace UniversalTypes
         }
 
         /// <summary>
-        /// Gets this variable's child properties as a dynamic object. The value of the variable is not represented. To get an
-        /// object which represents the value (but does not contain the child properties), use <see cref="ToObject"/>.
+        /// Gets this variable's child properties as a dynamic object. The value of the variable is
+        /// represented in the "Value" property. To get an object which represents the value (but
+        /// does not contain the child properties), use <see cref="ToObject"/>.
         /// </summary>
         public dynamic ToDynamic()
         {
+#pragma warning disable IDE0017
             dynamic obj = new ExpandoObject();
+#pragma warning restore IDE0017
+            obj.Value = ToObject();
             foreach (var item in _children)
             {
                 obj[item.Key] = item.Value;
@@ -2889,6 +3515,17 @@ namespace UniversalTypes
                 case InternalType.Boolean:
                     return _boolean;
                 case InternalType.Number:
+                    if (_number.IsIntegral())
+                    {
+                        if (_number < int.MaxValue)
+                        {
+                            return Convert.ToInt32(_number);
+                        }
+                        else if (_number < long.MaxValue)
+                        {
+                            return Convert.ToInt64(_number);
+                        }
+                    }
                     return _number;
                 case InternalType.String:
                     return _string;
@@ -2971,7 +3608,7 @@ namespace UniversalTypes
             switch (_type)
             {
                 case InternalType.Array:
-                    result._array = _array.SkipWhile(i => i == Empty).Reverse().SkipWhile(i => i == Empty).Reverse().ToList();
+                    result._array = _array.SkipWhile(i => i == null).Reverse().SkipWhile(i => i == null).Reverse().ToList();
                     break;
                 case InternalType.String:
                     result._string = _string.Trim();
@@ -3031,7 +3668,7 @@ namespace UniversalTypes
             switch (_type)
             {
                 case InternalType.Array:
-                    result._array = _array.AsEnumerable().Reverse().SkipWhile(i => i == Empty).Reverse().ToList();
+                    result._array = _array.AsEnumerable().Reverse().SkipWhile(i => i == null).Reverse().ToList();
                     break;
                 case InternalType.String:
                     result._string = _string.TrimEnd();
@@ -3086,7 +3723,7 @@ namespace UniversalTypes
             switch (_type)
             {
                 case InternalType.Array:
-                    result._array = _array.SkipWhile(i => i == Empty).ToList();
+                    result._array = _array.SkipWhile(i => i == null).ToList();
                     break;
                 case InternalType.String:
                     result._string = _string.TrimStart();
