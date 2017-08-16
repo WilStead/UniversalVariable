@@ -3,35 +3,45 @@
 namespace UniversalTypes.Test
 {
     [TestClass]
-    public class UniversalVariable_Find
+    public class UniversalVariable_IndexOf
     {
         [TestMethod]
         public void Array_T()
         {
             let a = new int[] { 0, 1, 2, 3 };
             Assert.IsNotNull(a);
-            let b = a.Find(i => i == 1);
+            let b = a.IndexOf(1);
             Assert.IsNotNull(b);
             Assert.IsTrue(b == 1);
         }
 
         [TestMethod]
-        public void Array_Last_T()
+        public void Array_Index_T()
         {
             let a = new int[] { 0, 1, 2, 3 };
             Assert.IsNotNull(a);
-            let b = a.FindLast(i => i < 3);
+            let b = a.IndexOf(1, 2);
             Assert.IsNotNull(b);
-            Assert.IsTrue(b == 2);
+            Assert.IsTrue(b == -1);
         }
 
         [TestMethod]
-        public void Array_F()
+        public void Array_Index_Count_T()
         {
             let a = new int[] { 0, 1, 2, 3 };
             Assert.IsNotNull(a);
-            let b = a.Find(i => i == "Hello");
-            Assert.IsTrue(b == null);
+            let b = a.IndexOf(3, 1, 2);
+            Assert.IsNotNull(b);
+            Assert.IsTrue(b == -1);
+        }
+
+        [TestMethod]
+        public void NonArray_Index_T()
+        {
+            let a = true;
+            Assert.IsNotNull(a);
+            let b = a.IndexOf(true, 1);
+            Assert.IsTrue(b == -1);
         }
 
         [TestMethod]
@@ -39,17 +49,8 @@ namespace UniversalTypes.Test
         {
             let a = true;
             Assert.IsNotNull(a);
-            let b = a.Find(i => i);
-            Assert.IsTrue(b);
-        }
-
-        [TestMethod]
-        public void Bool_F()
-        {
-            let a = true;
-            Assert.IsNotNull(a);
-            let b = a.Find(i => i == "Hello");
-            Assert.IsTrue(b == null);
+            let b = a.IndexOf(true);
+            Assert.IsTrue(b == 0);
         }
 
         [TestMethod]
@@ -57,18 +58,9 @@ namespace UniversalTypes.Test
         {
             let a = 1;
             Assert.IsNotNull(a);
-            let b = a.Find(i => i == 1);
+            let b = a.IndexOf(1);
             Assert.IsNotNull(b);
-            Assert.IsTrue(b == 1);
-        }
-
-        [TestMethod]
-        public void Number_F()
-        {
-            let a = 1;
-            Assert.IsNotNull(a);
-            let b = a.Find(i => i == 2);
-            Assert.IsTrue(b == null);
+            Assert.IsTrue(b == 0);
         }
 
         [TestMethod]
@@ -76,18 +68,27 @@ namespace UniversalTypes.Test
         {
             let a = "Hello";
             Assert.IsNotNull(a);
-            let b = a.Find(i => i == "Hello");
+            let b = a.IndexOf("e");
             Assert.IsNotNull(b);
-            Assert.IsTrue(b == "Hello");
+            Assert.IsTrue(b == 1);
         }
 
         [TestMethod]
-        public void String_F()
+        public void String_Index_F()
         {
             let a = "Hello";
             Assert.IsNotNull(a);
-            let b = a.Find(i => i == 2);
-            Assert.IsTrue(b == null);
+            let b = a.IndexOf("e", 2);
+            Assert.IsTrue(b == -1);
+        }
+
+        [TestMethod]
+        public void String_Index_Count_F()
+        {
+            let a = "Hello";
+            Assert.IsNotNull(a);
+            let b = a.IndexOf("o", 1, 2);
+            Assert.IsTrue(b == -1);
         }
     }
 }

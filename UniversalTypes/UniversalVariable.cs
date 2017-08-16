@@ -38,7 +38,7 @@ namespace UniversalTypes
                     return;
                 }
                 PadRight(index + 1);
-                _array[index] = value;
+                _array[index] = value ?? new let();
             }
         }
 
@@ -90,11 +90,11 @@ namespace UniversalTypes
             {
                 if (int.TryParse(index, out var intIndex))
                 {
-                    this[intIndex] = value;
+                    this[intIndex] = value ?? new let();
                 }
                 else
                 {
-                    _children[index] = value;
+                    _children[index] = value ?? new let();
                 }
             }
         }
@@ -2204,7 +2204,7 @@ namespace UniversalTypes
                 }
                 _type = InternalType.Array;
             }
-            _array.Add(item);
+            _array.Add(item ?? new let());
         }
 
         /// <summary>
@@ -2271,6 +2271,10 @@ namespace UniversalTypes
         /// <returns>true if the item is present; false otherwise.</returns>
         public bool Contains(let item)
         {
+            if (item == null)
+            {
+                return false;
+            }
             if (_type == InternalType.Array)
             {
                 return _array.Contains(item);
@@ -2331,13 +2335,16 @@ namespace UniversalTypes
         {
             CopyValue(other);
             _array.Clear();
-            foreach (var item in other._array)
+            if (other != null)
             {
-                _array.Add(item.DeepClone());
-            }
-            foreach (var item in other._children)
-            {
-                _children.Add(item.Key, item.Value.DeepClone());
+                foreach (var item in other._array)
+                {
+                    _array.Add(item.DeepClone());
+                }
+                foreach (var item in other._children)
+                {
+                    _children.Add(item.Key, item.Value.DeepClone());
+                }
             }
         }
 
@@ -2349,6 +2356,10 @@ namespace UniversalTypes
         /// <param name="index">The starting index of the destination array.</param>
         public void CopyTo(let array, int index = 0)
         {
+            if (array == null)
+            {
+                return;
+            }
             var targetLength = _type == InternalType.Array
                 ? _array.Count + index
                 : (array._type == InternalType.Array ? array.Length - index : index + 1);
@@ -2375,13 +2386,25 @@ namespace UniversalTypes
             }
         }
 
-        private void CopyValue(let other)
+        private let CopyValue(let other)
         {
-            _type = other._type;
-            _boolean = other._boolean;
-            _number = other._number;
-            _string = other._string;
-            _array.AddRange(other._array);
+            if (other == null)
+            {
+                _type = InternalType.None;
+                _boolean = false;
+                _number = double.NaN;
+                _string = null;
+                _array.Clear();
+            }
+            else
+            {
+                _type = other._type;
+                _boolean = other._boolean;
+                _number = other._number;
+                _string = other._string;
+                _array.AddRange(other._array);
+            }
+            return this;
         }
 
         /// <summary>
@@ -2412,6 +2435,10 @@ namespace UniversalTypes
         /// </summary>
         public bool Equals(let other)
         {
+            if (other == null)
+            {
+                return _type == InternalType.None && _children.Count == 0;
+            }
             if (_type != other._type
                 || !_children.SequenceEqual(other._children))
             {
@@ -2627,7 +2654,7 @@ namespace UniversalTypes
         /// <summary>
         /// Searches an array for an element that matches the conditions defined by the specified
         /// predicate, and returns the zero-based index of the last occurrence within an array
-        /// starting at the specified index; for non-arrays, returns 0 if the value fulfills the
+        /// up to the specified index; for non-arrays, returns 0 if the value fulfills the
         /// predicate and <paramref name="startIndex"/> is 0, and -1 otherwise.
         /// </summary>
         public int FindLastIndex(int startIndex, Predicate<let> match)
@@ -2653,7 +2680,7 @@ namespace UniversalTypes
         /// <summary>
         /// Searches an array for an element that matches the conditions defined by the specified
         /// predicate, and returns the zero-based index of the last occurrence within an array
-        /// starting at the specified index and containing the specified number of elements; for
+        /// up to the specified index and containing the specified number of elements; for
         /// non-arrays, returns 0 if the value fulfills the predicate and <paramref
         /// name="startIndex"/> is 0, and -1 otherwise.
         /// </summary>
@@ -2789,9 +2816,17 @@ namespace UniversalTypes
         /// </summary>
         public int IndexOf(let item)
         {
+            if (item == null)
+            {
+                return -1;
+            }
             if (_type == InternalType.Array)
             {
                 return _array.IndexOf(item);
+            }
+            else if (_type == InternalType.String)
+            {
+                return _string.IndexOf(item.ToString());
             }
             else
             {
@@ -2809,9 +2844,17 @@ namespace UniversalTypes
             {
                 index = 0;
             }
+            if (item == null)
+            {
+                return -1;
+            }
             if (_type == InternalType.Array)
             {
                 return _array.IndexOf(item, index);
+            }
+            else if (_type == InternalType.String)
+            {
+                return _string.IndexOf(item.ToString(), index);
             }
             else
             {
@@ -2831,13 +2874,17 @@ namespace UniversalTypes
                 count += index; // since it's negative, this reduces count
                 index = 0;
             }
-            if (count <= 0)
+            if (item == null || count <= 0)
             {
                 return -1;
             }
             if (_type == InternalType.Array)
             {
                 return _array.IndexOf(item, index, count);
+            }
+            else if (_type == InternalType.String)
+            {
+                return _string.IndexOf(item.ToString(), index, count);
             }
             else
             {
@@ -2862,7 +2909,7 @@ namespace UniversalTypes
                 ConvertToArray();
             }
             PadRight(index);
-            _array.Insert(index, item);
+            _array.Insert(index, item ?? new let());
         }
 
         /// <summary>
@@ -2871,7 +2918,7 @@ namespace UniversalTypes
         /// </summary>
         /// <param name="index">The zero-based index at which the item should be inserted.</param>
         /// <param name="item">The item to insert.</param>
-        public void InsertRange(int index, IEnumerable<let> collection)
+        public void InsertRange(int index, let collection)
         {
             if (index < 0)
             {
@@ -2882,7 +2929,18 @@ namespace UniversalTypes
                 ConvertToArray();
             }
             PadRight(index);
-            _array.InsertRange(index, collection);
+            if (collection == null)
+            {
+                _array.Insert(index, new let());
+            }
+            else if (collection._type == InternalType.Array)
+            {
+                _array.InsertRange(index, collection._array);
+            }
+            else
+            {
+                _array.Insert(index, collection);
+            }
         }
 
         /// <summary>
@@ -3010,7 +3068,10 @@ namespace UniversalTypes
                     _array.Remove(item);
                     break;
                 case InternalType.String:
-                    _string = _string.Replace(item.ToString(), string.Empty);
+                    if (item != null)
+                    {
+                        _string = _string.Replace(item.ToString(), string.Empty);
+                    }
                     break;
                 default:
                     break;
@@ -3167,6 +3228,10 @@ namespace UniversalTypes
 
         private let SetValue(object value)
         {
+            if (value == null)
+            {
+                _type = InternalType.None;
+            }
             if (value.GetType() == typeof(bool))
             {
                 _type = InternalType.Boolean;
@@ -3275,64 +3340,74 @@ namespace UniversalTypes
         /// returns an array with the value as the only element (or an empty array if the value is
         /// null and null values are to be omitted).
         /// </summary>
-        public let[] Split(string[] separator, StringSplitOptions options)
+        public let Split(let separators, StringSplitOptions options = StringSplitOptions.None)
         {
             switch (_type)
             {
                 case InternalType.Array:
                     if (options == StringSplitOptions.RemoveEmptyEntries)
                     {
-                        return _array.Where(i => i != null).ToArray();
+                        return new let(_array.Where(i => i != null));
                     }
                     else
                     {
-                        return _array.ToArray();
+                        return new let(_array);
                     }
                 case InternalType.String:
-                    return _string.Split(separator, options).Select(i => new let(i)).ToArray();
+                    string[] sep = separators == null
+                        ? null
+                        : (separators._type == InternalType.Array
+                            ? separators._array.Select(i => i.ToString()).ToArray()
+                            : new string[] { separators.ToString() });
+                    return new let(_string.Split(sep, options).Select(i => new let(i)));
                 default:
-                    if (options == StringSplitOptions.RemoveEmptyEntries && Equals(null))
+                    var result = new let { _type = InternalType.Array };
+                    if (options != StringSplitOptions.RemoveEmptyEntries || !Equals(null))
                     {
-                        return new let[0];
+                        result.CopyValue(this);
                     }
-                    else
-                    {
-                        return new let[] { this };
-                    }
+                    return result;
             }
         }
 
         /// <summary>
-        /// Returns an array that contains substrings in a string separated by the given separators,
-        /// or the elements of an array (separators are ignored for arrays); up to the given count;
-        /// the options parameter specifies whether to return empty elements. For other types,
-        /// returns an array with the value as the only element (or an empty array if the value is
-        /// null and null values are to be omitted).
+        /// Returns an array that contains up to a given number of substrings in a string separated
+        /// by the given separators, or the elements of an array (separators are ignored for arrays)
+        /// up to the given count; the options parameter specifies whether to return empty elements.
+        /// For other types, returns an array with the value as the only element (or an empty array
+        /// if the value is null and null values are to be omitted).
         /// </summary>
-        public let[] Split(string[] separator, int count, StringSplitOptions options)
+        public let Split(let separators, int count, StringSplitOptions options = StringSplitOptions.None)
         {
+            if (count <= 0)
+            {
+                return new let { _type = InternalType.Array };
+            }
             switch (_type)
             {
                 case InternalType.Array:
                     if (options == StringSplitOptions.RemoveEmptyEntries)
                     {
-                        return _array.Where(i => i != null).Take(count).ToArray();
+                        return new let(_array.Where(i => i != null).Take(count));
                     }
                     else
                     {
-                        return _array.Take(count).ToArray();
+                        return new let(_array.Take(count));
                     }
                 case InternalType.String:
-                    return _string.Split(separator, count, options).Select(i => new let(i)).ToArray();
+                    string[] sep = separators == null
+                        ? null
+                        : (separators._type == InternalType.Array
+                            ? separators._array.Select(i => i.ToString()).ToArray()
+                            : new string[] { separators.ToString() });
+                    return new let(_string.Split(sep, count, options).Select(i => new let(i)));
                 default:
-                    if (options == StringSplitOptions.RemoveEmptyEntries && Equals(null))
+                    var result = new let { _type = InternalType.Array };
+                    if (options != StringSplitOptions.RemoveEmptyEntries || !Equals(null))
                     {
-                        return new let[0];
+                        result.CopyValue(this);
                     }
-                    else
-                    {
-                        return new let[] { this };
-                    }
+                    return result;
             }
         }
 
@@ -3624,19 +3699,25 @@ namespace UniversalTypes
         /// and end of an array, and from the beginning and end of a string if they are strings; gets
         /// an unchanged deep copy of other variable types.
         /// </summary>
-        public let Trim(IEnumerable<let> trimElements)
+        public let Trim(let trimElements)
         {
             var result = DeepClone();
+            if (trimElements == null)
+            {
+                return result;
+            }
+            var elements = trimElements._type == InternalType.Array ? trimElements._array : new List<let> { trimElements };
             switch (_type)
             {
                 case InternalType.Array:
-                    result._array = _array.SkipWhile(i => trimElements.Any(t => i == t)).Reverse().SkipWhile(i => trimElements.Any(t => i == t)).Reverse().ToList();
+                    result._array = _array.SkipWhile(i => elements.Any(t => i == t)).Reverse().SkipWhile(i => elements.Any(t => i == t)).Reverse().ToList();
                     break;
                 case InternalType.String:
                     var retry = false;
                     do
                     {
-                        foreach (var item in trimElements.Where(t => t._type == InternalType.String))
+                        retry = false;
+                        foreach (var item in elements.Where(t => t._type == InternalType.String))
                         {
                             if (result._string.StartsWith(item._string))
                             {
@@ -3684,19 +3765,25 @@ namespace UniversalTypes
         /// and end of an array, and from the beginning and end of a string if they are strings; gets
         /// an unchanged deep copy of other variable types.
         /// </summary>
-        public let TrimEnd(IEnumerable<let> trimElements)
+        public let TrimEnd(let trimElements)
         {
             var result = DeepClone();
+            if (trimElements == null)
+            {
+                return result;
+            }
+            var elements = trimElements._type == InternalType.Array ? trimElements._array : new List<let> { trimElements };
             switch (_type)
             {
                 case InternalType.Array:
-                    result._array = _array.AsEnumerable().Reverse().SkipWhile(i => trimElements.Any(t => i == t)).Reverse().ToList();
+                    result._array = _array.AsEnumerable().Reverse().SkipWhile(i => elements.Any(t => i == t)).Reverse().ToList();
                     break;
                 case InternalType.String:
                     var retry = false;
                     do
                     {
-                        foreach (var item in trimElements.Where(t => t._type == InternalType.String))
+                        retry = false;
+                        foreach (var item in elements.Where(t => t._type == InternalType.String))
                         {
                             if (result._string.EndsWith(item._string))
                             {
@@ -3739,19 +3826,25 @@ namespace UniversalTypes
         /// of an array, and from the beginning of a string if they are strings; gets an unchanged
         /// deep copy of other variable types.
         /// </summary>
-        public let TrimStart(IEnumerable<let> trimElements)
+        public let TrimStart(let trimElements)
         {
             var result = DeepClone();
+            if (trimElements == null)
+            {
+                return result;
+            }
+            var elements = trimElements._type == InternalType.Array ? trimElements._array : new List<let> { trimElements };
             switch (_type)
             {
                 case InternalType.Array:
-                    result._array = _array.SkipWhile(i => trimElements.Any(t => i == t)).ToList();
+                    result._array = _array.SkipWhile(i => elements.Any(t => i == t)).ToList();
                     break;
                 case InternalType.String:
                     var retry = false;
                     do
                     {
-                        foreach (var item in trimElements.Where(t => t._type == InternalType.String))
+                        retry = false;
+                        foreach (var item in elements.Where(t => t._type == InternalType.String))
                         {
                             if (result._string.StartsWith(item._string))
                             {
