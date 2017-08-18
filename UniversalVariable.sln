@@ -1,0 +1,38 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.26730.3
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UniversalVariable", "UniversalVariable\UniversalVariable.csproj", "{1522EAF6-6CB1-48C0-BF09-C5FEB3D6A782}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{079D1E4C-BAEE-4633-84AE-7B2E98B4849B}"
+	ProjectSection(SolutionItems) = preProject
+		.gitattributes = .gitattributes
+		.gitignore = .gitignore
+		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UniversalVariable.Test", "UniversalVariable.Test\UniversalVariable.Test.csproj", "{A7725885-ACBC-4303-95FE-A27AD65A205C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1522EAF6-6CB1-48C0-BF09-C5FEB3D6A782}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1522EAF6-6CB1-48C0-BF09-C5FEB3D6A782}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1522EAF6-6CB1-48C0-BF09-C5FEB3D6A782}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1522EAF6-6CB1-48C0-BF09-C5FEB3D6A782}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A7725885-ACBC-4303-95FE-A27AD65A205C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A7725885-ACBC-4303-95FE-A27AD65A205C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A7725885-ACBC-4303-95FE-A27AD65A205C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A7725885-ACBC-4303-95FE-A27AD65A205C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {447ACBC7-69E7-49F3-92F0-68A6936D3AE5}
+	EndGlobalSection
+EndGlobal
