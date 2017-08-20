@@ -92,6 +92,29 @@ namespace UniversalVariable.Test
             Assert.IsNotNull(a);
         }
 
+        private class ChildClass
+        {
+            public int X;
+            public string Y { get; set; }
+        }
+
+        [TestMethod]
+        public void Assignment_Children_Class()
+        {
+            let a = new let(new ChildClass { X = 1, Y = "Hello" });
+            Assert.IsNotNull(a);
+            Assert.AreEqual(2, a.PropertyCount);
+            Assert.IsTrue(a.ContainsProperty("X"));
+            Assert.IsTrue(a["X"] == 1);
+            Assert.IsTrue(a.ContainsProperty("Y"));
+            Assert.IsTrue(a["Y"] == "Hello");
+
+            var d = a.ToDynamic();
+            Assert.IsNotNull(d);
+            Assert.IsTrue(d.X == 1);
+            Assert.IsTrue(d.Y == "Hello");
+        }
+
         [TestMethod]
         public void Assignment_To_Jagged_Object_Array()
         {

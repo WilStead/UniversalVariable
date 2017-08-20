@@ -3296,11 +3296,11 @@ namespace UniversalVariable
         private let SetProperties(object value)
         {
             var type = value.GetType();
-            foreach (var fieldInfo in type.GetRuntimeFields())
+            foreach (var fieldInfo in type.GetRuntimeFields().Where(f => f.IsPublic))
             {
                 _children[fieldInfo.Name] = new let(fieldInfo.GetValue(value));
             }
-            foreach (var propInfo in type.GetRuntimeProperties())
+            foreach (var propInfo in type.GetRuntimeProperties().Where(p => p.CanRead))
             {
                 _children[propInfo.Name] = new let(propInfo.GetValue(value));
             }
