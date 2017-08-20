@@ -3,13 +3,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
 namespace UniversalVariable
 {
 #pragma warning disable IDE1006
-    public class let : IEquatable<let>, IComparable
+    public class let : DynamicObject, IEquatable<let>, IComparable
 #pragma warning restore IDE1006
     {
         internal enum InternalType { None, Array, Boolean, Number, String }
@@ -3634,13 +3635,24 @@ namespace UniversalVariable
 #pragma warning disable IDE0017
             dynamic obj = new ExpandoObject();
 #pragma warning restore IDE0017
-            if (_type != InternalType.None)
+            if (_type == InternalType.Array)
+            {
+                obj.Value = new List<object>(_array.Select(c => c._type == InternalType.Array || c._type == InternalType.None ? c.ToDynamic() : c.ToObject()));
+            }
+            else if (_type != InternalType.None)
             {
                 obj.Value = ToObject();
             }
             foreach (var item in _children)
             {
-                (obj as IDictionary<string, object>)[item.Key] = item.Value.ToObject();
+                if (item.Value._type != InternalType.Array && item.Value._type != InternalType.Array)
+                {
+                    (obj as IDictionary<string, object>)[item.Key] = item.Value.ToObject();
+                }
+                else
+                {
+                    (obj as IDictionary<string, object>)[item.Key] = item.Value.ToDynamic();
+                }
             }
             return obj;
         }
@@ -3675,7 +3687,7 @@ namespace UniversalVariable
             {
                 case InternalType.Array:
                     var array = _array.Select(i => i.ToObject()).ToArray();
-                    if (array.Length > 0 && array.All(e => e.GetType() == array[0].GetType()))
+                    if (array.Length > 0 && array[0] != null && array.All(e => e.GetType() == array[0]?.GetType()))
                     {
                         var typedArray = Array.CreateInstance(array[0].GetType(), array.Length);
                         array.CopyTo(typedArray, 0);
@@ -3725,26 +3737,6 @@ namespace UniversalVariable
         }
 
         /// <summary>
-        /// Returns a copy of this variable with a string value, and any strings in an array, converted to uppercase.
-        /// </summary>
-        public let ToUpper()
-        {
-            var result = DeepClone();
-            switch (_type)
-            {
-                case InternalType.Array:
-                    result._array = _array.Select(i => i.ToUpper()).ToList();
-                    break;
-                case InternalType.String:
-                    result._string = _string.ToUpper();
-                    break;
-                default:
-                    break;
-            }
-            return result;
-        }
-
-        /// <summary>
         /// Converts the value of this variable to a string representation, using the specified
         /// format for numbers. Operates recursively on arrays.
         /// </summary>
@@ -3765,6 +3757,26 @@ namespace UniversalVariable
             {
                 return ToString();
             }
+        }
+
+        /// <summary>
+        /// Returns a copy of this variable with a string value, and any strings in an array, converted to uppercase.
+        /// </summary>
+        public let ToUpper()
+        {
+            var result = DeepClone();
+            switch (_type)
+            {
+                case InternalType.Array:
+                    result._array = _array.Select(i => i.ToUpper()).ToList();
+                    break;
+                case InternalType.String:
+                    result._string = _string.ToUpper();
+                    break;
+                default:
+                    break;
+            }
+            return result;
         }
 
         /// <summary>
@@ -3973,6 +3985,149 @@ namespace UniversalVariable
             {
                 return match.Invoke(this);
             }
+        }
+
+        public override bool TryGetIndex(GetIndexBinder binder, object[] indexes, out object result)
+        {
+            if (indexes == null || indexes.Length == 0)
+            {
+                result = new let();
+            }
+            else
+            {
+                var index = indexes[0];
+                if (index.GetType() == typeof(int) && (int)index >= 0)
+                {
+                    int intIndex = (int)index;
+                    PadRight(intIndex + 1);
+                    result = _array[intIndex];
+                }
+                else if (index.GetType() == typeof(let))
+                {
+                    var letIndex = index as let;
+                    var d = letIndex.ToDouble();
+                    if (d.IsIntegral() && d >= 0 && d <= int.MaxValue)
+                    {
+                        return TryGetIndex(binder, new object[] { Convert.ToInt32(d) }, out result);
+                    }
+                    else
+                    {
+                        return TryGetIndex(binder, new object[] { letIndex.ToString() }, out result);
+                    }
+                }
+                else
+                {
+                    var strIndex = index.ToString();
+                    if (int.TryParse(strIndex, out var intIndex))
+                    {
+                        return TryGetIndex(binder, new object[] { intIndex }, out result);
+                    }
+                    if (_children.TryGetValue(strIndex, out var value))
+                    {
+                        result = value;
+                    }
+                    else
+                    {
+                        let newValue = new let();
+                        _children.Add(strIndex, newValue);
+                        result = newValue;
+                    }
+                }
+            }
+            return true;
+        }
+
+        public override bool TryGetMember(GetMemberBinder binder, out object result)
+        {
+            if (int.TryParse(binder.Name, out var intIndex) && intIndex >= 0)
+            {
+                PadRight(intIndex + 1);
+                result = _array[intIndex];
+            }
+            if (_children.TryGetValue(binder.Name, out var value))
+            {
+                result = value;
+            }
+            else
+            {
+                let newValue = new let();
+                _children.Add(binder.Name, newValue);
+                result = newValue;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Variables cannot be invoked like functions, but doing so does not cause an error; it simply returns an empty variable.
+        /// </summary>
+        public override bool TryInvoke(InvokeBinder binder, object[] args, out object result)
+        {
+            result = new let();
+            return true;
+        }
+
+        /// <summary>
+        /// Invoking an undefined member of a variable does not cause an error; it simply returns an empty variable.
+        /// </summary>
+        public override bool TryInvokeMember(InvokeMemberBinder binder, object[] args, out object result)
+        {
+            result = new let();
+            return true;
+        }
+
+        public override bool TrySetIndex(SetIndexBinder binder, object[] indexes, object value)
+        {
+            if (indexes == null || indexes.Length == 0)
+            {
+                return true;
+            }
+            var index = indexes[0];
+            if (index.GetType() == typeof(int) && (int)index >= 0)
+            {
+                int intIndex = (int)index;
+                PadRight(intIndex + 1);
+                _array[intIndex] = value is let ? value as let : new let(value);
+            }
+            else if (index.GetType() == typeof(let))
+            {
+                var letIndex = index as let;
+                var d = letIndex.ToDouble();
+                if (d.IsIntegral() && d >= 0 && d <= int.MaxValue)
+                {
+                    return TrySetIndex(binder, new object[] { Convert.ToInt32(d) }, value);
+                }
+                else
+                {
+                    return TrySetIndex(binder, new object[] { letIndex.ToString() }, value);
+                }
+            }
+            else
+            {
+                var strIndex = index.ToString();
+                if (int.TryParse(strIndex, out var intIndex))
+                {
+                    return TrySetIndex(binder, new object[] { intIndex }, value);
+                }
+                else
+                {
+                    _children[strIndex] = value is let ? value as let : new let(value);
+                }
+            }
+            return true;
+        }
+
+        public override bool TrySetMember(SetMemberBinder binder, object value)
+        {
+            if (int.TryParse(binder.Name, out var intIndex) && intIndex >= 0)
+            {
+                PadRight(intIndex + 1);
+                _array[intIndex] = value is let ? value as let : new let(value);
+            }
+            else
+            {
+                _children[binder.Name] = value is let ? value as let : new let(value);
+            }
+            return true;
         }
     }
 }

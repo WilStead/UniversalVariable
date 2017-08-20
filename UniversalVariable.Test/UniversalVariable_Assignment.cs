@@ -1,4 +1,8 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
+using System.Collections.Generic;
+using System.Dynamic;
+using System.Reflection;
 
 namespace UniversalVariable.Test
 {
@@ -92,27 +96,97 @@ namespace UniversalVariable.Test
             Assert.IsNotNull(a);
         }
 
-        private class ChildClass
+        public class TestChildArgClass
+        {
+            public bool B { get; set; }
+        }
+
+        private class TestArgClass
         {
             public int X;
             public string Y { get; set; }
+            public ICollection<TestChildArgClass> Children { get; set; }
         }
 
         [TestMethod]
         public void Assignment_Children_Class()
         {
-            let a = new let(new ChildClass { X = 1, Y = "Hello" });
+            var tac = new TestArgClass
+            {
+                X = 1,
+                Y = "Hello",
+                Children = new List<TestChildArgClass> { new TestChildArgClass { B = true }, new TestChildArgClass { B = true }, new TestChildArgClass { B = false } }
+            };
+
+            let a = new let(tac);
             Assert.IsNotNull(a);
-            Assert.AreEqual(2, a.PropertyCount);
+            Assert.AreEqual(3, a.PropertyCount);
             Assert.IsTrue(a.ContainsProperty("X"));
             Assert.IsTrue(a["X"] == 1);
             Assert.IsTrue(a.ContainsProperty("Y"));
             Assert.IsTrue(a["Y"] == "Hello");
+            Assert.IsTrue(a.ContainsProperty("Children"));
+            Assert.AreEqual(3, a["Children"].Length);
+            Assert.IsTrue(a["Children"][0].ContainsProperty("B"));
+            Assert.IsTrue(a["Children"][0]["B"]);
+
+            a["Children"].ForEach(c => c["B"] = false);
+            Assert.IsTrue(a["Children"].TrueForAll(c => !c["B"]));
 
             var d = a.ToDynamic();
             Assert.IsNotNull(d);
             Assert.IsTrue(d.X == 1);
             Assert.IsTrue(d.Y == "Hello");
+            Assert.IsFalse(d.Children.Value[0].B);
+            Assert.IsFalse(d.Children.Value[1].B);
+            Assert.IsFalse(d.Children.Value[2].B);
+        }
+
+        private void SetValue(object original, Type type, dynamic updated)
+        {
+            if ((updated as IDictionary<string, object>).TryGetValue("Value", out var value))
+            {
+                if (type.IsArray)
+                {
+                    var list = original as IList<object>;
+                    list.Clear();
+                    for (int i = 0; i < (int)typeof(object[]).GetProperty("Length").GetValue(value); i++)
+                    {
+                        list.Add((value as object[])[i]);
+                    }
+                }
+                original = value;
+            }
+            else
+            {
+                foreach (var prop in updated as IDictionary<string, object>)
+                {
+                    var argField = type.GetRuntimeField(prop.Key);
+                    if (argField == null)
+                    {
+                        var argProp = type.GetRuntimeProperty(prop.Key);
+                        if (prop.Value.GetType() == typeof(ExpandoObject))
+                        {
+                            SetValue(argProp.GetValue(original), argProp.PropertyType, prop.Value);
+                        }
+                        else
+                        {
+                            argProp.SetValue(original, prop.Value);
+                        }
+                    }
+                    else
+                    {
+                        if (prop.Value.GetType() == typeof(ExpandoObject))
+                        {
+                            SetValue(argField.GetValue(original), argField.FieldType, prop.Value);
+                        }
+                        else
+                        {
+                            argField.SetValue(original, prop.Value);
+                        }
+                    }
+                }
+            }
         }
 
         [TestMethod]
